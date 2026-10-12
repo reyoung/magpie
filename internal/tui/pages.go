@@ -370,6 +370,7 @@ func (m *model) openProviderModels(id string) {
 		crumbs: []string{"providers", p.Name, "models"},
 		input:  newInput("filter models"),
 		items:  modelOptions(id),
+		relist: func() []agent.Option { return modelOptions(id) },
 		empty:  "no models known yet · m on the providers list asks the vendor for them",
 		toggle: func(model string) ([]agent.Option, string, bool) {
 			p, err := provider.Find(id)

@@ -72,6 +72,7 @@ type picker struct {
 	crumbs []string
 	input  textinput.Model
 	items  []agent.Option
+	relist func() []agent.Option // refresh model options when a background list arrives
 	match  []int
 	cursor int
 	custom bool
@@ -230,9 +231,33 @@ func (m *model) goTo(p page) tea.Cmd {
 
 func (m model) Init() tea.Cmd {
 	if m.syncing {
-		return syncCmd
+		return tea.Batch(syncCmd, fetchModelsCmd)
 	}
-	return nil
+	return fetchModelsCmd
+}
+
+type modelsMsg struct{}
+
+func fetchModelsCmd() tea.Msg {
+	provider.FetchNew(20 * time.Second)
+	return modelsMsg{}
+}
+
+// modelsChanged updates a picker already open, keeping its filter and
+// selected model while the vendor or models.dev fills in the catalog.
+func (m *model) modelsChanged() {
+	m.reload()
+	if m.mode == modePick && m.pk.relist != nil {
+		selected, _ := m.pk.choice()
+		m.pk.items = m.pk.relist()
+		m.pk.refilter()
+		for i, j := range m.pk.match {
+			if m.pk.items[j].Value == selected {
+				m.pk.cursor = i
+				break
+			}
+		}
+	}
 }
 
 func syncCmd() tea.Msg {
@@ -299,8 +324,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, saveInstructions(msg.text)
+	case modelsMsg:
+		m.modelsChanged()
+		return m, nil
 	case syncedMsg:
 		m.syncing = false
+		m.modelsChanged()
 		if msg.err != nil {
 			m.flash, m.flashOK = "catalog sync failed: "+msg.err.Error(), false
 		} else {
@@ -425,6 +454,7 @@ func (m *model) openFieldPicker() {
 		crumbs: []string{a.Name, f.Label},
 		input:  newInput("type to filter, or enter a custom value"),
 		items:  items,
+		relist: func() []agent.Option { return withCurrent(a.Picks(f, a.Values()), f.Get()) },
 		custom: true,
 		empty:  "no models known yet, type one",
 		onPick: func(v string) tea.Cmd {

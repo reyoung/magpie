@@ -227,6 +227,7 @@ func (m *model) openMemberPicker(p pickMsg) {
 		crumbs: crumbs,
 		input:  newInput("filter models and groups"),
 		items:  memberOptions(skip, p.group),
+		relist: func() []agent.Option { return memberOptions(skip, p.group) },
 		empty:  empty,
 		onPick: func(id string) tea.Cmd {
 			if p.group != "" {
@@ -254,21 +255,25 @@ func (m *model) openMemberPicker(p pickMsg) {
 // openClassifier picks the model that tells which intent a message is:
 // a model, or another group whose models are tried in turn.
 func (m *model) openClassifier(g provider.Group) {
-	var items []agent.Option
-	for _, e := range provider.Catalog() {
-		if e.Group == g.ID {
-			continue // it can't classify for itself
+	list := func() []agent.Option {
+		var items []agent.Option
+		for _, e := range provider.Catalog() {
+			if e.Group == g.ID {
+				continue // it can't classify for itself
+			}
+			note := e.Name
+			if e.ID == g.Classifier {
+				note = "● now · " + note
+			}
+			items = append(items, agent.Option{Value: e.ID, Note: note})
 		}
-		note := e.Name
-		if e.ID == g.Classifier {
-			note = "● now · " + note
-		}
-		items = append(items, agent.Option{Value: e.ID, Note: note})
+		return items
 	}
 	m.pk = picker{
 		crumbs: []string{"routing", g.Name, "classifier"},
 		input:  newInput("filter models · best a small fast one without reasoning"),
-		items:  items,
+		items:  list(),
+		relist: list,
 		empty:  "magpie has no models yet · add a provider first",
 		onPick: func(id string) tea.Cmd {
 			return saveGroup(g.ID, func(g *provider.Group) error { g.Classifier = id; return nil }, g.Name+" classifies with "+id)

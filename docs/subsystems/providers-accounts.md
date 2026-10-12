@@ -42,6 +42,24 @@ keys and accounts per request is in [Gateway routing and fallback](gateway-routi
 | Partners | Services that pay to be listed first in the add sheet, under a heading of their own ("Partners · magpie's sponsors"). The list is `site/partners.js`, served at `usemagpie.ai/api/partners`: a change reaches users with a deploy, not a release. `Partners` never waits: it returns what was fetched last and fetches again behind the call every 6 hours (10 minutes after a failure), keeping the list in `partners.json` in the cache folder. Each entry is checked again on every read (`validPartners`): its own id, never a built-in preset's, a name, an endpoint, https only, at most 12; what only magpie's presets may set (a decision API, no key, a user endpoint) is cleared. Its logo is fetched through `FetchIcon` and kept as an uploaded icon. A partner is a preset to the rest of magpie (`Preset`, `FromPreset`, the editor), and one no longer listed still is to the providers added from it (`Seen`), without the sponsored mark. The window lists a partner in the languages it names (`langs`) only and shows its tagline in the page's language (`notes`, else `en`). `MAGPIE_PARTNERS` points it elsewhere, `off` lists none; tests list none unless they name a list. How often each listed partner was shown, opened (its row, its key page) and added is counted per UTC day (`CountPartner`, capped at 20 of each and 5 adds, kept in `partner-counts.json` in the cache folder) and sent with the next day's stats event as `magpie partner` events (`internal/stats`); nothing is counted with the stats or their usage part off. A listed partner the add sheet (or the TUI's, or `magpie providers presets`) hasn't shown yet is new (`NoticePartners` keeps those shown, as `noticed` in `partners.json`, whatever the stats); the window's add button carries a small dot for it, with its name in the title, until the sheet shows it. | [`partners.go`](../../internal/provider/partners.go), [`partner_events.go`](../../internal/provider/partner_events.go), [`site/partners.js`](../../site/partners.js) |
 | Protocol detection | Works out which of Chat, Responses, Anthropic Messages and Gemini generateContent a base URL speaks when a provider is added. Each is asked at the URL as it takes it (`DetectBase`); Gemini's at the `…/v1beta` beside a typed `…/v1` or bare host, a Gemini model from the list picked for it, with the key in `x-goog-api-key` (#1346). Detection, endpoint tests and model tests share `probe`, which adds `anthropic-version` only for Anthropic Messages; OpenAI probes omit that default so a relay that refuses it can answer. User-supplied headers still apply through `Sign`. The editor asks with the form as it stands, before any Save (#1545): the URL, key and models typed (`picked`, else the saved picks, else the vendor list); a key not typed again is the saved provider's, or for an unsaved copy the copied one's (`copyOf`). The probe writes nothing and adds no provider, and the route stays behind `magpie web`'s key. | [`detect.go`](../../internal/provider/detect.go), [`test.go`](../../internal/provider/test.go) |
 
+## Model discovery in the terminal
+
+At startup, [`model.Init`](../../internal/tui/tui.go) runs `fetchModelsCmd`
+in the background, alongside a missing models.dev catalog's sync. It uses
+[`FetchNew`](../../internal/provider/models.go) to fetch missing signed-in
+subscription lists, with the same 20-second timeout per provider as the GUI.
+Already-listed accounts are skipped and a failed fetch keeps the fallback
+or previously cached list; the existing retry throttle is unchanged.
+When either list arrives, the TUI reloads the current page and any open
+agent, provider, routing-member or classifier model picker, keeping the
+filter and the selected model if it remains available. Manual fetching
+remains `m` on the Providers page.
+
+`TestTUIFetchesSubscriptionModels` in [`models_test.go`](../../internal/tui/models_test.go)
+covers a built-in Cursor account initially offering only Auto, with the
+startup fetch completing after each picker is open, including a cold
+models.dev catalog. It uses a fake Cursor CLI in an isolated home.
+
 ## Remote magpie
 
 The `remote-magpie` preset is of its own kind, `KindRemote` (`remote`), not
