@@ -21649,6 +21649,19 @@ function renderReplies(s, keep) {
   fval.append(segs([...counts, ["", t("All")]], n,
     (v) => savePrefs({ ...keep, refusalRetries: v === "" ? null : Number(v) })));
   f.append(fwho, fval);
+  // how long a routing group's classifier is given to say which intent a
+  // turn is: 8 seconds unless set, as a slow one needs more (#2934)
+  const k = el("div", "row pref");
+  k.id = "classifyTimeoutRow";
+  const kwho = el("div", "who");
+  kwho.append(el("div", "name", t("Intent classifier timeout")),
+    el("div", "sub wraps", t("How long a routing group's classifier is given to say which intent a turn is. The turn waits for it before it goes anywhere, and past it goes on without its answer. A slow classifier may need longer")));
+  const secs = [8, 15, 30, 60].map((n) => [String(n), t("{n} s", { n })]);
+  const sec = String(s.classifyTimeout > 0 ? s.classifyTimeout : 8);
+  if (!secs.some(([id]) => id === sec)) secs.push([sec, t("{n} s", { n: sec })]); // set by hand in settings.json
+  const kval = el("div", "val");
+  kval.append(segs(secs, sec, (v) => savePrefs({ ...keep, classifyTimeout: Number(v) })));
+  k.append(kwho, kval);
   // the agent's instructions as a Claude run's system prompt (off unless on)
   const c = el("div", "row pref");
   c.id = "claudeLeanRow";
@@ -21659,7 +21672,7 @@ function renderReplies(s, keep) {
   cval.append(segs([["off", t("Off")], ["on", t("On")]], s.claudeLeanPrompt ? "on" : "off",
     (v) => savePrefs({ ...keep, claudeLeanPrompt: v === "on" })));
   c.append(cwho, cval);
-  box.append(r, l, f, c);
+  box.append(r, l, f, k, c);
 }
 
 // renderDisabledModels: the models the user turned off for every request
@@ -23573,7 +23586,7 @@ function prefsKeep(s) {
     codexWarmAts: warmTimes(s.codexWarmAts, s.codexWarmAt), claudeWarmAts: warmTimes(s.claudeWarmAts, s.claudeWarmAt), workbuddyCheckin: !!s.workbuddyCheckin, traeCheckin: !!s.traeCheckin, minimaxCheckin: !!s.minimaxCheckin, qoderCheckin: !!s.qoderCheckin, noStats: !!s.noStats, noUsageStats: !!s.noUsageStats,
     memberModel: !!s.memberModel, noLoopGuard: !!s.noLoopGuard, claudeLeanPrompt: !!s.claudeLeanPrompt, refusalRetries: s.refusalRetries ?? null,
     noUpdatePill: !!s.noUpdatePill, noAutoUpdate: !!s.noAutoUpdate, updateEvery: s.updateEvery || 360, autoRestart: !!s.autoRestart, noAutoDownload: !!s.noAutoDownload,
-    trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, trayNoLogos: !!s.trayNoLogos, trayNoBird: !!s.trayNoBird, trayPace: !!s.trayPace, trayNoCost: !!s.trayNoCost, vision: s.vision || "", visionEffort: s.visionEffort || "", searcherEffort: s.searcherEffort || "", imageGen: s.imageGen || "", imageTimeout: s.imageTimeout || 0, searcher: s.searcher || "", searchFirst: s.searchFirst || "", currency: s.currency || "usd",
+    trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, trayNoLogos: !!s.trayNoLogos, trayNoBird: !!s.trayNoBird, trayPace: !!s.trayPace, trayNoCost: !!s.trayNoCost, vision: s.vision || "", visionEffort: s.visionEffort || "", searcherEffort: s.searcherEffort || "", imageGen: s.imageGen || "", imageTimeout: s.imageTimeout || 0, classifyTimeout: s.classifyTimeout || 0, searcher: s.searcher || "", searchFirst: s.searchFirst || "", currency: s.currency || "usd",
     chineseUnits: !!s.chineseUnits, usageAlert: s.usageAlert || 0, balanceAlert: s.balanceAlert || 0, resetReminder: s.resetReminder || 0,
     turnDoneAlert: s.turnDoneAlert || 0 };
 }
