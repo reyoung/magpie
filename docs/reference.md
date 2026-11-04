@@ -3359,6 +3359,21 @@ MAGPIE_OTEL_ENABLED=true MAGPIE_OTEL_ENDPOINT=http://localhost:4318 magpie serve
   keeps them entire rather than cut at 256 KB. A long reply is written to a
   temporary file; a body too large for the collector is still refused.
 
+- `OTEL_RESOURCE_ATTRIBUTES`: comma-separated `key=value` resource attributes,
+  attached to both traces and metrics. Values are strings; percent-encode commas
+  and equals signs within keys or values (`%2C`, `%3D`), and `%` as `%25`.
+  Surrounding whitespace is trimmed and the last occurrence of a key wins.
+  `service.name` defaults to `magpie` and can be overridden here. An invalid
+  entry discards the entire variable, logs an error without its contents and
+  leaves the default resource in use; export continues. This variable alone
+  does not enable export. Set it in the exporting process's environment and
+  restart that process after changing it. For example, to identify a server:
+
+  ```sh
+  OTEL_RESOURCE_ATTRIBUTES='service.instance.id=magpie-prod-01,host.name=server-a,deployment.environment.name=production' \
+    MAGPIE_OTEL_ENABLED=true MAGPIE_OTEL_ENDPOINT=http://localhost:4318 magpie serve
+  ```
+
 For Langfuse, pick **Collector › Langfuse**, then the host (Cloud EU
 `https://cloud.langfuse.com`, Cloud US `https://us.cloud.langfuse.com`, or
 **Self-hosted** with your own address, which also takes another Langfuse
