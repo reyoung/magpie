@@ -4,8 +4,10 @@ package provider
 // account's: a sub2api key its owner gave a 5-hour, day or 7-day limit
 // tells what it has spent of each, as a plan bought with a key (Kimi
 // Code, the GLM Coding Plan, MiniMax's, OpenCode Go, Command Code's:
-// planquota.go) tells its plan's windows, and routing weighs and rests it
-// by them (#1016). They are read behind the request, never waited for, and read
+// planquota.go) tells its plan's windows, and a Remote magpie's gateway
+// key tells the limit that magpie holds it to (RemoteKeyLimitPath), and
+// routing weighs and rests it by them (#1016). They are read behind the
+// request, never waited for, and read
 // again once a minute has passed; until the first reading is back, the
 // one last shown on the key's card stands in for it. A reading that finds
 // a window the key was out of no longer full — its limit raised in the
@@ -54,12 +56,17 @@ const (
 )
 
 // readsKeyWindows says p is a key whose own usage windows magpie reads:
-// one whose Balance URL is a sub2api panel's query for a key, or one at a
-// vendor whose keys tell their plan's windows (planQuotaSourceOf). Said
-// without asking anything, so any other key costs nothing here.
+// one whose Balance URL is a sub2api panel's query for a key, one at a
+// vendor whose keys tell their plan's windows (planQuotaSourceOf), or a
+// Remote magpie's gateway key, which that magpie tells its own limit
+// (remote_key_limits.go). Said without asking anything, so any other key
+// costs nothing here.
 func readsKeyWindows(p Provider) bool {
 	if p.Account != nil || p.Key == "" {
 		return false
+	}
+	if p.IsRemoteMagpie() {
+		return true
 	}
 	if sub2APIKeyLimits(p) {
 		return true
@@ -164,7 +171,9 @@ func KeyAllowance(p Provider) (Allowance, bool) {
 		c.m[id] = e
 	}
 	age := keyAllowanceAge
-	if len(e.a) == 0 && !e.at.IsZero() {
+	if len(e.a) == 0 && !e.at.IsZero() && !p.IsRemoteMagpie() {
+		// a remote magpie answers from its own count, asking no vendor:
+		// a limit given the key there is read within the minute
 		age = keyNoWindowsAge
 	}
 	// with allowances read only when asked, routing goes by what was read
@@ -251,6 +260,9 @@ func keyWindows(ctx context.Context, p Provider) (keyReading, error) {
 	}
 	var r keyReading
 	var err error
+	if q.IsRemoteMagpie() {
+		return remoteKeyWindows(ctx, q)
+	}
 	if accountPlanOf(q) != "" && !sub2APIKeyLimits(q) {
 		if _, ok := planQuotaSourceOf(q); !ok {
 			return accountPlanWindows(ctx, q)
@@ -304,8 +316,25 @@ func lastKeyAllowance(p Provider) Allowance {
 }
 
 // noteKeyAllowance keeps the windows the key's card just read, for
-// routing to go by at once.
+// routing to go by at once. A Remote magpie's key goes by the limit that
+// magpie tells it alone (noteRemoteKeyAllowance), never by a balance or
+// plan card read of it here, such as a balance the user typed for it.
 func noteKeyAllowance(p Provider, ws []QuotaWindow, now time.Time) {
+	if p.IsRemoteMagpie() {
+		return
+	}
+	noteKeyWindows(p, ws, now)
+}
+
+// noteRemoteKeyAllowance keeps the limit a Remote magpie just told its
+// key (remoteKeyCardOf), for routing to go by at once.
+func noteRemoteKeyAllowance(p Provider, ws []QuotaWindow, now time.Time) {
+	if p.IsRemoteMagpie() {
+		noteKeyWindows(p, ws, now)
+	}
+}
+
+func noteKeyWindows(p Provider, ws []QuotaWindow, now time.Time) {
 	if !readsKeyWindows(p) {
 		return
 	}

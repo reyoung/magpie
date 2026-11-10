@@ -275,6 +275,11 @@ func withKeyReadings(cards []SubscriptionQuota, ps []Provider, kind string) []Su
 		if !strings.HasPrefix(keyCardTag(p), kind+" ") {
 			continue // the key's windows are its other card's
 		}
+		if p.IsRemoteMagpie() {
+			// its key's limit is that magpie's to tell, on the key's own
+			// card (remoteKeyCards), never one of this magpie's
+			continue
+		}
 		// each card goes to one key: two keys of one name have a card
 		// each, in the order cardKeys gives them (PlanQuotas and
 		// KeyBalances make them in that order)

@@ -140,27 +140,12 @@ func remoteKeyCards(ctx context.Context, p Provider, fresh bool, only string) []
 }
 
 func remoteKeyCardOf(ctx context.Context, p Provider, name, key string, fresh bool) SubscriptionQuota {
-	id := p.ID + "\x00" + keyID(key)
-	c := &remoteKeyCache
-	c.Lock()
-	r, ok := c.m[id]
-	c.Unlock()
-	if !ok || fresh || time.Since(r.at) >= remoteCardsFor {
-		got, err := askRemoteKeyLimit(ctx, p, key)
-		r.at = time.Now()
-		if err != nil {
-			// what was read before stays, dated: a failed read is not
-			// "no limit" and not "nothing used"
-			r.err = err.Error()
-		} else {
-			r.got, r.readAt, r.err = got, r.at, ""
-		}
-		c.Lock()
-		if c.m == nil {
-			c.m = map[string]remoteKeyRead{}
-		}
-		c.m[id] = r
-		c.Unlock()
+	r, read := readRemoteKey(ctx, p, key, fresh)
+	if read {
+		// what routing goes by, read just now (KeyAllowance)
+		kp := p
+		kp.Key = key
+		noteRemoteKeyAllowance(kp, routedKeyWindows(r.got), r.readAt)
 	}
 	from := remoteName(p)
 	q := SubscriptionQuota{Provider: p.ID + "/" + remoteKeyCard, Name: from, Icon: "magpie", User: name, Kind: "plan", From: from, Windows: []QuotaWindow{}}
@@ -175,6 +160,84 @@ func remoteKeyCardOf(ctx context.Context, p Provider, name, key string, fresh bo
 	}
 	q.GatewayKey, q.Windows = keyLimitCard(r.got)
 	return q
+}
+
+// readRemoteKey is what is kept here of p's key's limit, asked of the
+// remote when what is kept is older than remoteCardsFor or fresh is asked
+// for; read is whether that ask was answered. A failed read keeps what was
+// read before, dated: it is not "no limit" and not "nothing used". An
+// answer that comes back after one asked later isn't kept over it: the
+// key's card and routing (remoteKeyWindows) both ask.
+func readRemoteKey(ctx context.Context, p Provider, key string, fresh bool) (r remoteKeyRead, read bool) {
+	id := p.ID + "\x00" + keyID(key)
+	c := &remoteKeyCache
+	c.Lock()
+	r, ok := c.m[id]
+	c.Unlock()
+	if ok && !fresh && time.Since(r.at) < remoteCardsFor {
+		return r, false
+	}
+	asked := time.Now()
+	got, err := askRemoteKeyLimit(ctx, p, key)
+	c.Lock()
+	defer c.Unlock()
+	r = c.m[id]
+	if asked.Before(r.readAt) {
+		return r, false // read since, by a later ask
+	}
+	if asked.After(r.at) {
+		r.at = asked
+	}
+	if err != nil {
+		r.err = err.Error()
+	} else {
+		r.got, r.readAt, r.err = got, asked, ""
+		read = true
+	}
+	if c.m == nil {
+		c.m = map[string]remoteKeyRead{}
+	}
+	c.m[id] = r
+	return r, read
+}
+
+// remoteKeyWindows is q's key's limit as routing weighs it (keyWindows),
+// asked of the remote: a read that fails is an error, so what routing
+// knew of the key stands.
+func remoteKeyWindows(ctx context.Context, q Provider) (keyReading, error) {
+	if q.Anthropic == "" {
+		return keyReading{}, fmt.Errorf("%s has no address", remoteName(q))
+	}
+	r, read := readRemoteKey(ctx, q, q.Key, true)
+	if !read {
+		if r.err != "" {
+			return keyReading{}, errors.New(r.err)
+		}
+		// answered since by a later ask, which noted it
+		if r.got == nil {
+			return keyReading{}, fmt.Errorf("%s hasn't told this key's limit yet", remoteName(q))
+		}
+	}
+	return keyReading{ws: routedKeyWindows(r.got)}, nil
+}
+
+// routedKeyWindows are the windows of a key's limit that routing goes by:
+// its card's, but none for a key held to no limit, which is as unknown to
+// routing as any key that tells nothing (counted unused). A limit of some
+// models is no window of the card's either: refused for one of them, the
+// key rests that model alone.
+func routedKeyWindows(a *remoteKeyAnswer) []QuotaWindow {
+	if a == nil {
+		return nil
+	}
+	_, ws := keyLimitCard(a)
+	out := ws[:0:0]
+	for _, w := range ws {
+		if !w.Unlimited {
+			out = append(out, w)
+		}
+	}
+	return out
 }
 
 // keyLimitCard is what a key's card shows of the remote's answer: a
